@@ -1,6 +1,8 @@
 import datetime
 from dateutil import relativedelta
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import os
 from lxml import etree
 import time
@@ -13,6 +15,31 @@ import hashlib
 HEADERS = {'authorization': 'token '+ os.environ['ACCESS_TOKEN']}
 USER_NAME = os.environ['USER_NAME'] # 'Andrew6rant'
 QUERY_COUNT = {'user_getter': 0, 'follower_getter': 0, 'graph_repos_stars': 0, 'recursive_loc': 0, 'graph_commits': 0, 'loc_query': 0}
+
+
+def requests_retry_session(
+    retries=3,
+    backoff_factor=0.5,
+    status_forcelist=(502, 503, 504),
+    session=None,
+):
+    """
+    Creates a requests session with retry strategy for handling transient server errors.
+    Retries on 502 (Bad Gateway), 503 (Service Unavailable), and 504 (Gateway Timeout).
+    """
+    if session is None:
+        session = requests.Session()
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
 
 def daily_readme(birthday):
@@ -43,8 +70,10 @@ def format_plural(unit):
 def simple_request(func_name, query, variables):
     """
     Returns a request, or raises an Exception if the response does not succeed.
+    Uses retry logic to handle transient 502/503/504 errors.
     """
-    request = requests.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS)
+    session = requests_retry_session()
+    request = session.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS)
     if request.status_code == 200:
         return request
     raise Exception(func_name, ' has failed with a', request.status_code, request.text, QUERY_COUNT)
@@ -109,6 +138,7 @@ def graph_repos_stars(count_type, owner_affiliation, cursor=None, add_loc=0, del
 def recursive_loc(owner, repo_name, data, cache_comment, addition_total=0, deletion_total=0, my_commits=0, cursor=None):
     """
     Uses GitHub's GraphQL v4 API and cursor pagination to fetch 100 commits from a repository at a time
+    Includes retry logic to handle transient 502/503/504 errors.
     """
     query_count('recursive_loc')
     query = '''
@@ -144,7 +174,8 @@ def recursive_loc(owner, repo_name, data, cache_comment, addition_total=0, delet
         }
     }'''
     variables = {'repo_name': repo_name, 'owner': owner, 'cursor': cursor}
-    request = requests.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS) # I cannot use simple_request(), because I want to save the file before raising Exception
+    session = requests_retry_session()
+    request = session.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS)
     if request.status_code == 200:
         if request.json()['data']['repository']['defaultBranchRef'] != None: # Only count commits if repo isn't empty
             return loc_counter_one_repo(owner, repo_name, data, cache_comment, request.json()['data']['repository']['defaultBranchRef']['target']['history'], addition_total, deletion_total, my_commits)
