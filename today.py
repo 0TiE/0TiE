@@ -73,7 +73,7 @@ def simple_request(func_name, query, variables):
     Uses retry logic to handle transient 502/503/504 errors.
     """
     session = requests_retry_session()
-    request = session.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS)
+    request = session.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS, timeout=60)
     if request.status_code == 200:
         return request
     raise Exception(func_name, ' has failed with a', request.status_code, request.text, QUERY_COUNT)
@@ -147,7 +147,7 @@ def recursive_loc(owner, repo_name, data, cache_comment, addition_total=0, delet
             defaultBranchRef {
                 target {
                     ... on Commit {
-                        history(first: 50, after: $cursor) {
+                        history(first: 20, after: $cursor) {
                             totalCount
                             edges {
                                 node {
@@ -175,7 +175,7 @@ def recursive_loc(owner, repo_name, data, cache_comment, addition_total=0, delet
     }'''
     variables = {'repo_name': repo_name, 'owner': owner, 'cursor': cursor}
     session = requests_retry_session()
-    request = session.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS)
+    request = session.post('https://api.github.com/graphql', json={'query': query, 'variables':variables}, headers=HEADERS, timeout=60)
     if request.status_code == 200:
         if request.json()['data']['repository']['defaultBranchRef'] != None: # Only count commits if repo isn't empty
             return loc_counter_one_repo(owner, repo_name, data, cache_comment, request.json()['data']['repository']['defaultBranchRef']['target']['history'], addition_total, deletion_total, my_commits)
@@ -213,7 +213,7 @@ def loc_query(owner_affiliation, comment_size=0, force_cache=False, cursor=None,
     query = '''
     query ($owner_affiliation: [RepositoryAffiliation], $login: String!, $cursor: String) {
         user(login: $login) {
-            repositories(first: 60, after: $cursor, ownerAffiliations: $owner_affiliation) {
+            repositories(first: 20, after: $cursor, ownerAffiliations: $owner_affiliation) {
             edges {
                 node {
                     ... on Repository {
@@ -278,8 +278,12 @@ def cache_builder(edges, comment_size, force_cache, loc_add=0, loc_del=0):
                 if int(commit_count) != edges[index]['node']['defaultBranchRef']['target']['history']['totalCount']:
                     # if commit count has changed, update loc for that repo
                     owner, repo_name = edges[index]['node']['nameWithOwner'].split('/')
-                    loc = recursive_loc(owner, repo_name, data, cache_comment)
-                    data[index] = repo_hash + ' ' + str(edges[index]['node']['defaultBranchRef']['target']['history']['totalCount']) + ' ' + str(loc[2]) + ' ' + str(loc[0]) + ' ' + str(loc[1]) + '\n'
+                    print(f"Processing: {owner}/{repo_name}...")
+                    try:
+                        loc = recursive_loc(owner, repo_name, data, cache_comment)
+                        data[index] = repo_hash + ' ' + str(edges[index]['node']['defaultBranchRef']['target']['history']['totalCount']) + ' ' + str(loc[2]) + ' ' + str(loc[0]) + ' ' + str(loc[1]) + '\n'
+                    except Exception as e:
+                        print(f"⚠️ Warning: Failed to process {owner}/{repo_name} due to an error. Skipping this repo for now.\nError: {e}")
             except TypeError: # If the repo is empty
                 data[index] = repo_hash + ' 0 0 0 0\n'
     with open(filename, 'w') as f:
