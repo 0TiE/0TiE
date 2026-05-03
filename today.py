@@ -7,6 +7,7 @@ import os
 from lxml import etree
 import time
 import hashlib
+import base64
 
 # Fine-grained personal access token with All Repositories access:
 # Account permissions: read:Followers, read:Starring, read:Watching
@@ -365,6 +366,19 @@ def svg_overwrite(filename, age_data, commit_data, star_data, repo_data, contrib
     justify_format(root, 'loc_data', loc_data[2], 9)
     justify_format(root, 'loc_add', loc_data[0])
     justify_format(root, 'loc_del', loc_data[1], 7)
+
+    # Embed profile image as base64
+    image_element = root.find(".//{http://www.w3.org/2000/svg}image")
+    if image_element is not None:
+        try:
+            pfp_url = f"https://github.com/{USER_NAME}.png"
+            response = requests.get(pfp_url)
+            if response.status_code == 200:
+                base64_image = base64.b64encode(response.content).decode('utf-8')
+                image_element.set('href', f"data:image/png;base64,{base64_image}")
+        except Exception as e:
+            print(f"Failed to embed profile image: {e}")
+
     tree.write(filename, encoding='utf-8', xml_declaration=True)
 
 
