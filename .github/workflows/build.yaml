@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4 # Already on latest v4
@@ -36,7 +38,6 @@ jobs:
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           USER_NAME: ${{ secrets.USER_NAME }}
-          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
         run: python today.py
 
       - name: Commit

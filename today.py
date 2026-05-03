@@ -18,8 +18,8 @@ QUERY_COUNT = {'user_getter': 0, 'follower_getter': 0, 'graph_repos_stars': 0, '
 
 
 def requests_retry_session(
-    retries=3,
-    backoff_factor=0.5,
+    retries=10,
+    backoff_factor=2,
     status_forcelist=(502, 503, 504),
     session=None,
 ):
@@ -147,7 +147,7 @@ def recursive_loc(owner, repo_name, data, cache_comment, addition_total=0, delet
             defaultBranchRef {
                 target {
                     ... on Commit {
-                        history(first: 100, after: $cursor) {
+                        history(first: 50, after: $cursor) {
                             totalCount
                             edges {
                                 node {
